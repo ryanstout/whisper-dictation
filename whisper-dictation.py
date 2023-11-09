@@ -5,27 +5,42 @@ import pyaudio
 import numpy as np
 import rumps
 from pynput import keyboard
-from whisper import load_model
+from whisper import load_model, Whisper
 import platform
 
+from player import play_sound
+
 class SpeechTranscriber:
-    def __init__(self, model):
+    def __init__(self, model: Whisper):
         self.model = model
         self.pykeyboard = keyboard.Controller()
 
     def transcribe(self, audio_data, language=None):
         result = self.model.transcribe(audio_data, language=language)
-        is_first = True
-        for element in result["text"]:
-            if is_first and element == " ":
-                is_first = False
-                continue
+        result_text = result["text"]
 
-            try:
-                self.pykeyboard.type(element)
-                time.sleep(0.0025)
-            except:
-                pass
+        # check if result is list
+        if isinstance(result_text, list):
+            print("THIS IS A LIST!")
+
+        # trim and post-process the text
+        result_text = result_text.strip()
+
+        # type all of the text at once
+        self.pykeyboard.type(result_text)
+
+        # is_first = True
+        # for element in result["text"]:
+        #     # wat?
+        #     if is_first and element == " ":
+        #         is_first = False
+        #         continue
+
+        #     try:
+        #         self.pykeyboard.type(element)
+        #         time.sleep(0.0025)
+        #     except:
+        #         pass
 
 class Recorder:
     def __init__(self, transcriber):
@@ -67,31 +82,12 @@ class Recorder:
 class GlobalKeyListener:
     def __init__(self, app, key_combination):
         self.app = app
-        self.key1, self.key2 = self.parse_key_combination(key_combination)
-        self.key1_pressed = False
-        self.key2_pressed = False
 
-    def parse_key_combination(self, key_combination):
-        key1_name, key2_name = key_combination.split('+')
-        key1 = getattr(keyboard.Key, key1_name)
-        key2 = getattr(keyboard.Key, key2_name)
-        return key1, key2
+        with keyboard.GlobalHotKeys({key_combination: self.hotkey_pressed}) as h:
+            h.join()
 
-    def on_key_press(self, key):
-        if key == self.key1:
-            self.key1_pressed = True
-        elif key == self.key2:
-            self.key2_pressed = True
-
-        if self.key1_pressed and self.key2_pressed:
-            self.app.toggle()
-
-    def on_key_release(self, key):
-        if key == self.key1:
-            self.key1_pressed = False
-        elif key == self.key2:
-            self.key2_pressed = False
-
+    def hotkey_pressed(self):
+        self.app.toggle()
 
 class StatusBarApp(rumps.App):
     def __init__(self, recorder, languages=None, max_time=None):
@@ -110,7 +106,7 @@ class StatusBarApp(rumps.App):
                 callback = self.change_language if lang != self.current_language else None
                 menu.append(rumps.MenuItem(lang, callback=callback))
             menu.append(None)
-            
+
         self.menu = menu
         self.menu['Stop Recording'].set_callback(None)
 
@@ -144,7 +140,7 @@ class StatusBarApp(rumps.App):
     def stop_app(self, _):
         if not self.started:
             return
-        
+
         if self.timer is not None:
             self.timer.cancel()
 
@@ -163,10 +159,13 @@ class StatusBarApp(rumps.App):
             self.title = f"({minutes:02d}:{seconds:02d}) 🔴"
             threading.Timer(1, self.update_title).start()
 
+
     def toggle(self):
         if self.started:
+            play_sound('stop')
             self.stop_app(None)
         else:
+            play_sound('start')
             self.start_app(None)
 
 
@@ -202,20 +201,24 @@ def parse_args():
     if args.model_name.endswith('.en') and args.language is not None and any(lang != 'en' for lang in args.language):
         raise ValueError('If using a model ending in .en, you cannot specify a language other than English.')
 
+    # set to english language
+    if args.model_name.endswith('.en') and args.language is None:
+        args.language = ['en']
+
     return args
 
 
 if __name__ == "__main__":
     args = parse_args()
 
-    print("Loading model...")
+    print("Loading model (into '~/.cache/whisper' by default)...")
     model_name = args.model_name
-    model = load_model(model_name)
+    model = load_model(name=model_name, in_memory=True)
     print(f"{model_name} model loaded")
-    
+
     transcriber = SpeechTranscriber(model)
     recorder = Recorder(transcriber)
-    
+
     app = StatusBarApp(recorder, args.language, args.max_time)
     key_listener = GlobalKeyListener(app, args.key_combination)
     listener = keyboard.Listener(on_press=key_listener.on_key_press, on_release=key_listener.on_key_release)
