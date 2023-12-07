@@ -13,19 +13,19 @@ class SpeechTranscriber:
         self.model = model
         self.pykeyboard = keyboard.Controller()
 
+
     def transcribe(self, audio_data, language=None):
         result = self.model.transcribe(audio_data, language=language)
         is_first = True
-        for element in result[0]:
-            if is_first and element.text == " ":
-                is_first = False
-                continue
-
-            try:
-                self.pykeyboard.type(element.text)
-                time.sleep(0.0025)
-            except:
-                pass
+        
+        # Convert result[0] to a list, then get .text from each
+        text = "".join([element.text for element in result[0]])
+    
+        try:
+            self.pykeyboard.type(text.strip())
+            time.sleep(0.0025)
+        except:
+            pass
 
 class Recorder:
     def __init__(self, transcriber):
