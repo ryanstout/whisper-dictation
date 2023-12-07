@@ -5,7 +5,7 @@ import pyaudio
 import numpy as np
 import rumps
 from pynput import keyboard
-from whisper import load_model
+from faster_whisper import WhisperModel
 import platform
 
 class SpeechTranscriber:
@@ -16,13 +16,13 @@ class SpeechTranscriber:
     def transcribe(self, audio_data, language=None):
         result = self.model.transcribe(audio_data, language=language)
         is_first = True
-        for element in result["text"]:
-            if is_first and element == " ":
+        for element in result[0]:
+            if is_first and element.text == " ":
                 is_first = False
                 continue
 
             try:
-                self.pykeyboard.type(element)
+                self.pykeyboard.type(element.text)
                 time.sleep(0.0025)
             except:
                 pass
@@ -210,7 +210,10 @@ if __name__ == "__main__":
 
     print("Loading model...")
     model_name = args.model_name
-    model = load_model(model_name)
+
+    device = "cpu"#"mps" if platform.system() == "Darwin" else "cpu"
+
+    model = WhisperModel(model_name, device=device, compute_type="float32")
     print(f"{model_name} model loaded")
     
     transcriber = SpeechTranscriber(model)
